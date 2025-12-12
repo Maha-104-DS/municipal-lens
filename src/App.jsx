@@ -16,7 +16,7 @@ const KPIS = {
 
 export default function App() {
   const [municipalities, setMunicipalities] = useState([]);
-  const [selectedMunicipality, setSelectedMunicipality] = useState('1280');
+  const [selectedMunicipality, setSelectedMunicipality] = useState('0380');
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
