@@ -3,7 +3,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, L
 import { Search, TrendingUp, Users, Building2, MapPin, Download, Filter, ChevronDown, Loader2, GraduationCap, Target, Globe } from 'lucide-react';
 import QualityInBriefPage from './QualityInBriefPage';
 
-const KOLADA_API = 'https://api.kolada.se/v2';
+const KOLADA_API = 'https://api.kolada.se/v3';
 
 // Correct KPI IDs from Kolada
 const KPIS = {
@@ -16,7 +16,7 @@ const KPIS = {
 
 export default function App() {
   const [municipalities, setMunicipalities] = useState([]);
-  const [selectedMunicipality, setSelectedMunicipality] = useState('1280');
+  const [selectedMunicipality, setSelectedMunicipality] = useState('0380');
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
