@@ -17,7 +17,7 @@ We followed a design thinking process (Empathize → Define → Ideate → Proto
 
 ## What I worked on
 
-I focused on the frontend — building out the React dashboard that lets users search for and compare municipality statistics, turning the Figma designs into a working interface.
+My contributions centered on the design and presentation side of the project: shaping the UI/UX direction (Figma wireframes, user flow, accessibility choices), co-presenting our findings and prototype, and exploring API integration approaches for pulling in Kolada data.
 
 ## Team
 
