@@ -7,11 +7,38 @@ const KOLADA_API = 'https://api.kolada.se/v2';
 
 // Correct KPI IDs from Kolada
 const KPIS = {
-  POPULATION: 'N00003', // Total population
+  PERSONAL_COST_PER_CAPITA: 'N00003', // Total personalCostPerCapita
   EMPLOYMENT: 'N00205', // Employment rate 20-64 years
   INCOME: 'N00011',     // Disposable income per inhabitant
-  GRADUATION_RATE: 'N00932',
-  PRESCHOOL_TEACHERS: 'N00935', // Heltidstjänster i förskolan med förskollärarlegitimation
+  GRADUATION_RATE: 'N17445',
+  PRESCHOOL_TEACHERS: 'N11808', // Heltidstjänster i förskolan med förskollärarlegitimation
+};
+
+const normalizeKoladaData = (data, latestOnly = false) => {
+  // Check if data is valid and contains values
+  if (!data?.values || data.values.length === 0) return latestOnly ? null : [];
+  
+  // In API response, the array of year objects is under data.values
+  const yearData = data.values;
+
+  // Flatten the array of year-objects into an array of simple {year, value} objects
+  const flatData = yearData
+    .map(item => ({
+      // Use the period as the year (and convert to string)
+      year: item.period.toString(),
+      // The actual numerical value is nested inside item.values[0].value
+      value: item.values?.[0]?.value ?? null, 
+    }))
+    .filter(item => item.value !== null); // Filter out entries where the value is null
+
+  // Sort by year descending (latest year first)
+  flatData.sort((a, b) => parseInt(b.year) - parseInt(a.year));
+
+  if (latestOnly) {
+    return flatData.length > 0 ? flatData[0] : null;
+  }
+  
+  return flatData;
 };
 
 export default function App() {
@@ -23,17 +50,22 @@ export default function App() {
   const [currentView, setCurrentView] = useState('main');
   
   // Data states
-  const [populationData, setPopulationData] = useState([]);
-  const [populationComparisonData, setPopulationComparisonData] = useState([]);
+  const [personalCostPerCapitaData, setPersonalCostPerCapitaData] = useState([]);
+  const [personalCostPerCapitaComparisonData, setPersonalCostPerCapitaComparisonData] = useState([]);
   const [employmentTrendData, setEmploymentTrendData] = useState([]);
   const [preschoolTeacherData, setPreschoolTeacherData] = useState([]);
+  const [graduationRateData, setGraduationRateData] = useState([]); 
   const [currentStats, setCurrentStats] = useState({
-    population: null,
+    personalCostPerCapita: null,
     employment: null,
     income: null,
     graduation: null,
     preschoolTeachers: null,
+    graduationRate: null,
   });
+  // New state for the trend data
+  
+
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: TrendingUp },
@@ -74,11 +106,12 @@ export default function App() {
     setLoading(true);
     try {
       await Promise.all([
-        fetchPopulationTrend(),
-        fetchPopulationComparison(),
+        fetchPersonalCostPerCapitaTrend(),
+        fetchPersonalCostPerCapitaComparison(),
         fetchEmploymentData(),
         fetchCurrentStats(),
-        fetchPreschoolTeacherData()
+        fetchPreschoolTeacherData(),
+        fetchGraduationRateData()
       ]);
       setLoading(false);
     } catch (err) {
@@ -87,25 +120,70 @@ export default function App() {
     }
   };
 
+  const fetchGraduationRateData = async () => {
+    try {
+        console.log('Fetching graduation rate data for municipality:', selectedMunicipality);
+        const response = await fetch(
+            `${KOLADA_API}/data/kpi/${KPIS.GRADUATION_RATE}/municipality/${selectedMunicipality}`
+        );
+        const data = await response.json();
+
+        // 🔑 NEW: A specific data normalization function for N17445
+        const normalizedData = data.values
+            .map(yearData => {
+                // Find the value object where gender is 'T' (Total)
+                const totalValueObject = yearData.values.find(v => v.gender === 'T');
+                
+                // Return only the data point if the total value exists
+                if (totalValueObject && totalValueObject.value !== null) {
+                    return {
+                        year: yearData.period.toString(),
+                        // Round the percentage to one decimal place
+                        percentage: parseFloat(totalValueObject.value.toFixed(1)),
+                    };
+                }
+                return null; // Ignore this year if total value is missing/null
+            })
+            .filter(item => item !== null) // Remove ignored items
+            // Sort data chronologically for the trend chart
+            .sort((a, b) => parseInt(a.year) - parseInt(b.year)); 
+
+        console.log('Formatted graduation rate data:', normalizedData);
+        setGraduationRateData(normalizedData);
+        
+        // Update the current stat (latest year)
+        if (normalizedData.length > 0) {
+            const latest = normalizedData[normalizedData.length - 1];
+            setCurrentStats(prev => ({
+                ...prev,
+                graduationRate: latest.percentage
+            }));
+        }
+
+    } catch (err) {
+        console.error('Failed to fetch graduation rate data:', err);
+        setGraduationRateData([]);
+    }
+};
+
   const fetchPreschoolTeacherData = async () => {
     try {
       console.log('Fetching preschool teacher data for municipality:', selectedMunicipality);
       const response = await fetch(
+        // The API endpoint uses the updated KPI
         `${KOLADA_API}/data/kpi/${KPIS.PRESCHOOL_TEACHERS}/municipality/${selectedMunicipality}`
       );
       const data = await response.json();
-      console.log('Preschool teacher API response:', data);
       
-      if (data.values && data.values[0] && data.values[0].values) {
-        const values = data.values[0].values
-          .filter(v => v.value !== null)
-          .sort((a, b) => a.period - b.period)
-          .slice(-8);
-        
-        const formatted = values.map(v => ({
-          year: v.period.toString(),
+      // Use the normalization helper to get all valid data points, sorted descending
+      const allDataSortedDesc = normalizeKoladaData(data, false); // Assuming you define the helper
+
+      if (allDataSortedDesc.length > 0) {
+        // Reverse the array to display chronologically (oldest first)
+        const formatted = allDataSortedDesc.reverse().map(v => ({
+          year: v.year,
+          // Use 'value' as the key for consistency, rounding to one decimal
           percentage: parseFloat(v.value.toFixed(1)),
-          value: parseFloat(v.value.toFixed(1))
         }));
         
         console.log('Formatted preschool data:', formatted);
@@ -119,7 +197,6 @@ export default function App() {
           }));
         }
       } else {
-        console.log('No preschool teacher data found in response');
         setPreschoolTeacherData([]);
       }
     } catch (err) {
@@ -128,67 +205,72 @@ export default function App() {
     }
   };
 
-  const fetchPopulationTrend = async () => {
+  const fetchPersonalCostPerCapitaTrend = async () => {
     try {
       const response = await fetch(
-        `${KOLADA_API}/data/kpi/${KPIS.POPULATION}/municipality/${selectedMunicipality}`
+        `${KOLADA_API}/data/kpi/${KPIS.PERSONAL_COST_PER_CAPITA}/municipality/${selectedMunicipality}`
       );
       const data = await response.json();
       
-      if (data.values && data.values[0] && data.values[0].values) {
-        const values = data.values[0].values
-          .filter(v => v.value !== null)
-          .sort((a, b) => a.period - b.period)
-          .slice(-5);
+      // Get ALL data, sorted descending
+      const allDataSortedDesc = normalizeKoladaData(data, false);
+      
+      if (allDataSortedDesc.length > 0) {
+        // Take the 5 most recent years (which are at the start of the array)
+        const latestFive = allDataSortedDesc.slice(0, 5).reverse();
         
-        const formatted = values.map(v => ({
-          year: v.period.toString(),
+        const formatted = latestFive.map(v => ({
+          year: v.year,
           value: Math.round(v.value)
         }));
         
-        setPopulationData(formatted);
+        console.log('PersonalCostPerCapita trend data (Fixed):', formatted);
+        setPersonalCostPerCapitaData(formatted);
+      } else {
+        setPersonalCostPerCapitaData([]);
       }
     } catch (err) {
-      console.error('Failed to fetch population trend:', err);
+      console.error('Failed to fetch personalCostPerCapita trend:', err);
     }
   };
 
-  const fetchPopulationComparison = async () => {
+
+  const fetchPersonalCostPerCapitaComparison = async () => {
     try {
-      const topMunicIds = ['1280', '1480', '1281', '0380', '1980']; // Stockholm, Göteborg, Malmö, Uppsala, Västerås
+      const topMunicIds = ['1280', '1480', '1281', '0380', '1980']; 
       
       const promises = topMunicIds.map(async (id) => {
         try {
           const response = await fetch(
-            `${KOLADA_API}/data/kpi/${KPIS.POPULATION}/municipality/${id}`
+            `${KOLADA_API}/data/kpi/${KPIS.PERSONAL_COST_PER_CAPITA}/municipality/${id}`
           );
           const data = await response.json();
           
-          if (data.values && data.values[0] && data.values[0].values.length > 0) {
-            const latestValue = data.values[0].values
-              .filter(v => v.value !== null)
-              .sort((a, b) => b.period - a.period)[0];
-            
+          // Use the helper to get the single latest data point
+          const latestValueObject = normalizeKoladaData(data, true); 
+          
+          if (latestValueObject) {
             const municName = municipalities.find(m => m.id === id)?.title || id;
             
-            if (latestValue) {
-              return {
-                municipality: municName,
-                population: Math.round(latestValue.value)
-              };
-            }
+            console.log(`${municName} latest personalCostPerCapita (Fixed):`, latestValueObject.value);
+            
+            return {
+              municipality: municName,
+              personalCostPerCapita: Math.round(latestValueObject.value)
+            };
           }
           return null;
         } catch (err) {
-          console.warn(`Failed to fetch population data for municipality ${id}:`, err);
+          console.warn(`Failed to fetch personalCostPerCapita data for municipality ${id}:`, err);
           return null;
         }
       });
       
       const results = (await Promise.all(promises)).filter(r => r !== null);
-      setPopulationComparisonData(results);
+      console.log('Comparison data (Fixed):', results);
+      setPersonalCostPerCapitaComparisonData(results);
     } catch (err) {
-      console.error('Failed to fetch population comparison:', err);
+      console.error('Failed to fetch personalCostPerCapita comparison:', err);
     }
   };
 
@@ -236,37 +318,24 @@ export default function App() {
 
   const fetchCurrentStats = async () => {
     try {
-      // Fetch latest population
-      const popResponse = await fetch(
-        `${KOLADA_API}/data/kpi/${KPIS.POPULATION}/municipality/${selectedMunicipality}`
+      const response = await fetch(
+        `${KOLADA_API}/data/kpi/${KPIS.PERSONAL_COST_PER_CAPITA}/municipality/${selectedMunicipality}`
       );
-      const popData = await popResponse.json();
+      const data = await response.json();
       
-      if (popData.values && popData.values[0] && popData.values[0].values.length > 0) {
-        const latest = popData.values[0].values
-          .filter(v => v.value !== null)
-          .sort((a, b) => b.period - a.period)[0];
-        
-        setCurrentStats(prev => ({
-          ...prev,
-          population: latest ? Math.round(latest.value) : null
-        }));
-      }
+      // Get the single latest data point using the new helper
+      const latest = normalizeKoladaData(data, true); 
 
-      // Fetch disposable income
-      const incomeResponse = await fetch(
-        `${KOLADA_API}/data/kpi/${KPIS.INCOME}/municipality/${selectedMunicipality}`
-      );
-      const incomeData = await incomeResponse.json();
-      
-      if (incomeData.values && incomeData.values[0] && incomeData.values[0].values.length > 0) {
-        const latest = incomeData.values[0].values
-          .filter(v => v.value !== null)
-          .sort((a, b) => b.period - a.period)[0];
-        
+      if (latest) { 
+        console.log(
+          'LATEST N00003 (Fixed):',
+          latest.year, // Should now be '2024'
+          latest.value // Should now be 36776.812786...
+        );
+
         setCurrentStats(prev => ({
           ...prev,
-          income: latest ? Math.round(latest.value) : null
+          personalCostPerCapita: Math.round(latest.value) // Should be 36,777
         }));
       }
     } catch (err) {
@@ -324,7 +393,7 @@ export default function App() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-          <p className="text-sm text-slate-600 mb-1">Preschool Teachers with License</p>
+          <p className="text-sm text-slate-600 mb-1">Preschool Teacher Certified Staff</p>
           <div className="flex items-end justify-between">
             <p className="text-2xl font-bold text-slate-900">
               {preschoolTeacherData.length > 0 
@@ -340,18 +409,28 @@ export default function App() {
               {preschoolTeacherData.length > 0 ? 'Live' : 'Demo'}
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-2">Heltidstjänster med förskollärarlegitimation</p>
+          <p className="text-xs text-slate-500 mt-2">Heltidstjänster - Kommunal regi</p>
         </div>
         
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-          <p className="text-sm text-slate-600 mb-1">Data Period</p>
-          <p className="text-2xl font-bold text-slate-900">
-            {preschoolTeacherData.length > 0 
-              ? `${preschoolTeacherData[0].year}-${preschoolTeacherData[preschoolTeacherData.length - 1].year}`
-              : '2023' // DUMMY VALUE WHEN NO DATA
-            }
-          </p>
-          <p className="text-xs text-slate-500 mt-2">Available years</p>
+
+          <p className="text-sm text-slate-600 mb-1">High school students graduating within 3 years</p>
+          <div className="flex items-end justify-between">
+            <p className="text-2xl font-bold text-slate-900">
+
+              {currentStats.graduationRate ? `${currentStats.graduationRate}%` : 'N/A'} 
+            </p>
+
+            <span className={`text-sm font-medium px-2 py-1 rounded ${
+              currentStats.graduationRate
+                ? 'text-green-600 bg-green-50' 
+                : 'text-blue-600 bg-blue-50' // Use blue for N/A or loading
+            }`}>
+              {currentStats.graduationRate ? 'Live' : 'Loading'}
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-500 mt-2">Andel (%) av elever som tar examen (N17445)</p>
         </div>
         
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
@@ -366,7 +445,7 @@ export default function App() {
         {preschoolTeacherData.length > 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h3 className="text-lg font-semibold text-slate-900 mb-4">
-              Heltidstjänster i förskolan med förskollärarlegitimation ({selectedMunicipalityName})
+              Preschool Certified Staff - Municipal Operations ({selectedMunicipalityName})
             </h3>
             <p className="text-sm text-slate-600 mb-4">
               Andel (%) av heltidstjänster som innehas av förskollärare med legitimation
@@ -403,9 +482,7 @@ export default function App() {
                 />
               </LineChart>
             </ResponsiveContainer>
-            <p className="text-xs text-slate-500 mt-3">
-              Källa: Kolada API - N00935
-            </p>
+            <p className="text-xs text-slate-500 mt-3">Källa: Kolada API - N11808</p>
           </div>
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -422,38 +499,41 @@ export default function App() {
           </div>
         )}
 
-        {/* Preschool Teacher Comparison Chart */}
+        {/* Gymnasieelever med examen inom 3 år, hemkommun, andel (%) - Trend Card */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">
-            Jämförelse med andra kommuner
-          </h3>
-          <p className="text-sm text-slate-600 mb-4">
-            Andel förskollärare med legitimation i större kommuner
-          </p>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={preschoolComparisonData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="municipality" stroke="#64748b" />
-              <YAxis stroke="#64748b" domain={[0, 100]} />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#fff', 
-                  border: '1px solid #e2e8f0', 
-                  borderRadius: '8px' 
-                }}
-                formatter={(value) => [`${value}%`, 'Andel']}
-              />
-              <Bar 
-                dataKey="percentage" 
-                name="Förskollärare med legitimation (%)"
-                fill="#8b5cf6" 
-                radius={[4, 4, 0, 0]} 
-              />
-            </BarChart>
-          </ResponsiveContainer>
-          <p className="text-xs text-slate-500 mt-3">
-            * Exempeldata för jämförelse
-          </p>
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                Proportion (%) of upper secondary students who graduated within 3 years, by home municipality
+            </h3>
+            <p className="text-sm text-slate-600 mb-4">
+                Andelen gymnasieelever som har tagit examen inom tre år (totalt, oavsett kön).
+            </p>
+            <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={graduationRateData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="year" stroke="#64748b" />
+                    <YAxis 
+                        stroke="#64748b" 
+                        domain={[50, 100]} // Set a reasonable domain for percentages (e.g., 50% to 100%)
+                        tickFormatter={(value) => `${value}%`}
+                    />
+                    <Tooltip 
+                        contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                        formatter={(value) => [`${value}%`, 'Andel (%)']}
+                    />
+                    <Line 
+                        type="monotone" 
+                        dataKey="percentage" 
+                        stroke="#0ea5e9" // A nice blue color
+                        name="Examen inom 3 år"
+                        strokeWidth={3} 
+                        dot={{ r: 4 }} 
+                        activeDot={{ r: 8 }}
+                    />
+                </LineChart>
+            </ResponsiveContainer>
+            <p className="text-xs text-slate-500 mt-3">
+                Källa: Kolada API - N17445
+            </p>
         </div>
 
         {/* Detailed Data Table */}
@@ -667,10 +747,10 @@ export default function App() {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-                    <p className="text-sm text-slate-600 mb-1">Population</p>
+                    <p className="text-sm text-slate-600 mb-1">PersonalCostPerCapita(kr)</p>
                     <div className="flex items-end justify-between">
                       <p className="text-2xl font-bold text-slate-900">
-                        {currentStats.population ? currentStats.population.toLocaleString('sv-SE') : 'No data'}
+                        {currentStats.personalCostPerCapita ? currentStats.personalCostPerCapita.toLocaleString('sv-SE') : 'No data'}
                       </p>
                       <span className="text-sm font-medium text-green-600 bg-green-50 px-2 py-1 rounded">
                         Live
@@ -708,12 +788,12 @@ export default function App() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Population Trend Chart */}
-                  {populationData.length > 0 && (
+                  {/* PersonalCostPerCapita Trend Chart */}
+                  {personalCostPerCapitaData.length > 0 && (
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                      <h3 className="text-lg font-semibold text-slate-900 mb-4">Population Trend ({selectedMunicipalityName})</h3>
+                      <h3 className="text-lg font-semibold text-slate-900 mb-4">PersonalCostPerCapita Trend ({selectedMunicipalityName})</h3>
                       <ResponsiveContainer width="100%" height={300}>
-                        <AreaChart data={populationData}>
+                        <AreaChart data={personalCostPerCapitaData}>
                           <defs>
                             <linearGradient id="colorPop" x1="0" y1="0" x2="0" y2="1">
                               <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
@@ -723,7 +803,7 @@ export default function App() {
                           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                           <XAxis dataKey="year" stroke="#64748b" />
                           <YAxis stroke="#64748b" />
-                          <Tooltip formatter={(value) => [value.toLocaleString('sv-SE'), 'Population']} />
+                          <Tooltip formatter={(value) => [value.toLocaleString('sv-SE'), 'PersonalCostPerCapita']} />
                           <Area 
                             type="monotone" 
                             dataKey="value" 
@@ -737,17 +817,17 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Population Comparison Chart - CHANGED TO BLUE */}
-                  {populationComparisonData.length > 0 && (
+                  {/* PersonalCostPerCapita Comparison Chart - CHANGED TO BLUE */}
+                  {personalCostPerCapitaComparisonData.length > 0 && (
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                      <h3 className="text-lg font-semibold text-slate-900 mb-4">Population Comparison</h3>
+                      <h3 className="text-lg font-semibold text-slate-900 mb-4">PersonalCostPerCapita Comparison</h3>
                       <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={populationComparisonData}>
+                        <BarChart data={personalCostPerCapitaComparisonData}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                           <XAxis dataKey="municipality" stroke="#64748b" />
                           <YAxis stroke="#64748b" />
-                          <Tooltip formatter={(value) => [value.toLocaleString('sv-SE'), 'Population']} />
-                          <Bar dataKey="population" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                          <Tooltip formatter={(value) => [value.toLocaleString('sv-SE'), 'PersonalCostPerCapita']} />
+                          <Bar dataKey="personalCostPerCapita" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
