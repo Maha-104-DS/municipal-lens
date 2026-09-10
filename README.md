@@ -1,16 +1,38 @@
-# React + Vite
+# Municipal Lens
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An interactive data visualization dashboard and search tool for exploring Swedish municipal statistics from [Kolada](https://www.kolada.se/) — built to make data like school results, safety indicators, and elderly care statistics easier for residents to find and understand.
 
-Currently, two official plugins are available:
+## The problem
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Kolada holds a lot of valuable municipal data, but the existing tools for exploring it are static, outdated, and hard to navigate for non-experts. Comparing data across municipalities is unclear, and the experience isn't accessible to everyday residents.
 
-## React Compiler
+## Our approach
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+We followed a design thinking process (Empathize → Define → Ideate → Prototype → Evaluate):
 
-## Expanding the ESLint configuration
+1. **Empathize** — identified pain points: data-heavy interfaces, unclear comparisons, low accessibility
+2. **Lo-fi prototyping** — mapped out core navigation and user flow in Figma, with early multilingual and accessibility considerations
+3. **Hi-fi prototyping** — designed a clean, Scandinavian-minimalist interface with a language switcher and strong color/font contrast for accessibility
+4. **Dashboard prototype** — built a working dashboard in React pulling from the Kolada database, letting users search and compare municipality data directly
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## What I worked on
+
+I focused on the frontend — building out the React dashboard that lets users search for and compare municipality statistics, turning the Figma designs into a working interface.
+
+## Team
+
+Built as a group project by:
+- Gouri Hariharan ([@gouriharihan1111](https://github.com/gouriharihan1111))
+- Mahjabeen Rabbani ([@Maha-104-DS](https://github.com/Maha-104-DS))
+- Priyashi Dogra
+
+## Tech stack
+
+- React
+- Vite
+- Figma (design/prototyping)
+
+## Note
+
+This started as a team hackathon/course project. The core dashboard (React + Kolada data) is a working prototype; some ideas explored during design (like a multilingual chatbot interface) were part of our design vision but not fully implemented in this version.
+
